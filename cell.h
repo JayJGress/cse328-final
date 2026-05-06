@@ -9,7 +9,9 @@
 typedef struct Cell Cell;
  
 typedef struct {
-    int tileX, tileY;
+    int x, y;
+    double width;
+    int axis;
     double offsetX, offsetY;
     double angle;
     Cell *destination;
@@ -25,6 +27,5 @@ extern Cell cells[MAX_CELLS];
 extern Cell *currentCell;
  
 void init_world();
-Portal *get_portal(Cell *cell, int tileX, int tileY);
  
 #endif

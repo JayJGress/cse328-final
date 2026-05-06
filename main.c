@@ -80,20 +80,21 @@ void handle_input(bool *running) {
 
     double moveSpeed = 0.005;
     double rotSpeed = 0.003;
+    double margin = 0.2;
 
     if (keystate[SDL_SCANCODE_W]) {
         double newX = posX + dirX * moveSpeed;
         double newY = posY + dirY * moveSpeed;
 
-        if (!is_wall(newX, posY)) posX = newX;
-        if (!is_wall(posX, newY)) posY = newY;
+        if (!is_wall(newX + dirX * margin, posY)) posX = newX;
+        if (!is_wall(posX, newY + dirY * margin)) posY = newY;
     }
     if (keystate[SDL_SCANCODE_S]) {
         double newX = posX - dirX * moveSpeed;
         double newY = posY - dirY * moveSpeed;
 
-        if (!is_wall(newX, posY)) posX = newX;
-        if (!is_wall(posX, newY)) posY = newY;
+        if (!is_wall(newX - dirX * margin, posY)) posX = newX;
+        if (!is_wall(posX, newY - dirY * margin)) posY = newY;
     }
 
     if (keystate[SDL_SCANCODE_D]) rotate(rotSpeed);
@@ -143,7 +144,11 @@ void render(Uint32 *pixels) {
 
         // --- DDA ---
         int hit = 0;
+        int oob = 0;
         int side;
+        Cell *rayCell = currentCell;
+        double rayPosX = posX;
+        double rayPosY = posY;
 
         while (!hit) {
             if (sideDistX < sideDistY) {
@@ -158,17 +163,55 @@ void render(Uint32 *pixels) {
 
             if (mapX < 0 || mapY < 0 || mapX >= CELL_WIDTH || mapY >= CELL_HEIGHT) {
                 hit = 1;
+                oob = 1;
                 break;
             }
-            if (currentCell->map[mapY][mapX] != 0) hit = 1;
+
+            int tile = rayCell->map[mapY][mapX];
+
+            // check portals
+            int portal_hit = 0;
+            for (int i = 0; i < rayCell->portalCount; i++) {
+                Portal *p = &rayCell->portals[i];
+                if (p->axis == 0) {
+                    if (mapX == (int)p->x && mapY >= (int)p->y && mapY < (int)(p->y + p->width)) {
+                        rayPosX += p->offsetX;
+                        rayPosY += p->offsetY;
+                        mapX = (int)(mapX + p->offsetX);
+                        mapY = (int)(mapY + p->offsetY);
+                        rayCell = p->destination;
+                        portal_hit = 1;
+                        break;
+                    }
+                } else {
+                    if (mapY == (int)p->y && mapX >= (int)p->x && mapX < (int)(p->x + p->width)) {
+                        rayPosX += p->offsetX;
+                        rayPosY += p->offsetY;
+                        mapX = (int)(mapX + p->offsetX);
+                        mapY = (int)(mapY + p->offsetY);
+                        rayCell = p->destination;
+                        portal_hit = 1;
+                        break;
+                    }
+                }
+            }
+
+            if (!portal_hit && tile != 0) hit = 1;
+        }
+
+        if (oob) {
+            for (int y = 0; y < SCREEN_HEIGHT; y++) {
+                pixels[y * SCREEN_WIDTH + x] = (y < SCREEN_HEIGHT / 2) ? 0xFF202030 : 0xFF404040;
+            }
+            continue;
         }
 
         // --- Distance ---
         double perpWallDist;
         if (side == 0)
-            perpWallDist = (mapX - posX + (1 - stepX) / 2.0) / rayDirX;
+            perpWallDist = (mapX - rayPosX + (1 - stepX) / 2.0) / rayDirX;
         else
-            perpWallDist = (mapY - posY + (1 - stepY) / 2.0) / rayDirY;
+            perpWallDist = (mapY - rayPosY + (1 - stepY) / 2.0) / rayDirY;
         if (perpWallDist < 0.0001) perpWallDist = 0.0001;
 
         // --- Line height ---
@@ -181,10 +224,12 @@ void render(Uint32 *pixels) {
         if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
         Uint8 r, g, b;
-        switch (currentCell->map[mapY][mapX]) {
-            case 1: r = 0;   g = 200; b = 0;   break; // green
-            case 2: r = 200; g = 0;   b = 0;   break; // red
-            case 3: r = 0;   g = 0;   b = 200; break; // blue
+        switch (rayCell->map[mapY][mapX]) {
+            case 1: r = 200; g = 200; b = 200;  break; // grey
+            case 2: r = 200; g = 0;   b = 0;    break; // red
+            case 3: r = 0;   g = 0;   b = 200;  break; // blue
+            case 4: r = 0;   g = 200; b = 0;    break; // green
+            case 5: r = 100; g = 100; b = 200;  break; // portal, shouldnt render
             default: r = 200; g = 200; b = 200; break;
         }
 
@@ -215,9 +260,11 @@ void render(Uint32 *pixels) {
         for (int x = 0; x < CELL_WIDTH; x++) {
             Uint32 color;
             switch (currentCell->map[y][x]) {
-                case 1: color = 0xFF00FF00; break;
+                case 1: color = 0xFF999999; break;
                 case 2: color = 0xFFFF0000; break;
                 case 3: color = 0xFF0000FF; break;
+                case 4: color = 0xFF00FF00; break;
+                case 5: color = 0xFFFFFF00; break;
                 default: color = 0xFF000000; break;
             }
 
