@@ -2,27 +2,14 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <math.h>
-
+#include "cell.h"
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define MAP_WIDTH 8
-#define MAP_HEIGHT 8
 
-int worldMap[MAP_WIDTH][MAP_HEIGHT] = {
-    {1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,0,1,1,0,1},
-    {1,0,1,0,1,0,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,0,1,1,1,0,0,1},
-    {1,0,0,0,0,0,0,1},
-    {1,1,1,1,1,1,1,1}
-};
-
-double posX = 3.5, posY = 3.5;
-double dirX = -1, dirY = 0;
-double planeX = 0, planeY = -0.66;
+double posX = 7.5, posY = 5.5;
+double dirX = 0, dirY = -1;
+double planeX = 0.66, planeY = 0;
 
 typedef struct {
     SDL_Window* window;
@@ -66,12 +53,11 @@ bool init(App *app) {
 }
 
 int is_wall(double x, double y) {
-    if (x < 0 || y < 0 || x >= MAP_WIDTH || y >= MAP_HEIGHT) return -1;
-    return worldMap[(int)x][(int)y] == 1;
+    if (x < 0 || y < 0 || x >= CELL_WIDTH || y >= CELL_HEIGHT) return -1;
+    return currentCell->map[(int)y][(int)x] != 0;
 }
 
-void rotate(double angle)
-{
+void rotate(double angle) {
     double oldDirX = dirX;
     dirX = dirX * cos(angle) - dirY * sin(angle);
     dirY = oldDirX * sin(angle) + dirY * cos(angle);
@@ -95,7 +81,6 @@ void handle_input(bool *running) {
     double moveSpeed = 0.005;
     double rotSpeed = 0.003;
 
-    // forward/back
     if (keystate[SDL_SCANCODE_W]) {
         double newX = posX + dirX * moveSpeed;
         double newY = posY + dirY * moveSpeed;
@@ -111,9 +96,7 @@ void handle_input(bool *running) {
         if (!is_wall(posX, newY)) posY = newY;
     }
 
-    // rotate right (D)
     if (keystate[SDL_SCANCODE_D]) rotate(rotSpeed);
-    // rotate left (A)
     if (keystate[SDL_SCANCODE_A]) rotate(-rotSpeed);
 }
 
@@ -142,7 +125,6 @@ void render(Uint32 *pixels) {
         double sideDistX, sideDistY;
         int stepX, stepY;
 
-        // step + initial sideDist
         if (rayDirX < 0) {
             stepX = -1;
             sideDistX = (posX - mapX) * deltaDistX;
@@ -174,11 +156,11 @@ void render(Uint32 *pixels) {
                 side = 1;
             }
 
-            if (mapX < 0 || mapY < 0 || mapX >= MAP_WIDTH || mapY >= MAP_HEIGHT) {
+            if (mapX < 0 || mapY < 0 || mapX >= CELL_WIDTH || mapY >= CELL_HEIGHT) {
                 hit = 1;
                 break;
             }
-            if (worldMap[mapX][mapY] == 1) hit = 1;
+            if (currentCell->map[mapY][mapX] != 0) hit = 1;
         }
 
         // --- Distance ---
@@ -188,6 +170,7 @@ void render(Uint32 *pixels) {
         else
             perpWallDist = (mapY - posY + (1 - stepY) / 2.0) / rayDirY;
         if (perpWallDist < 0.0001) perpWallDist = 0.0001;
+
         // --- Line height ---
         int lineHeight = (int)(SCREEN_HEIGHT / perpWallDist);
 
@@ -197,48 +180,53 @@ void render(Uint32 *pixels) {
         int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
         if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
-        double brightness = 1.0 / (perpWallDist * perpWallDist * 0.02 + 1.0);
+        Uint8 r, g, b;
+        switch (currentCell->map[mapY][mapX]) {
+            case 1: r = 0;   g = 200; b = 0;   break; // green
+            case 2: r = 200; g = 0;   b = 0;   break; // red
+            case 3: r = 0;   g = 0;   b = 200; break; // blue
+            default: r = 200; g = 200; b = 200; break;
+        }
 
-        // clamp so it never goes full black
-        if (brightness < 0.2) brightness = 0.2;
-
-        // base green
-        Uint8 r = 0;
-        Uint8 g = (Uint8)(255 * brightness);
-        Uint8 b = 0;
-
-        // darker for Y-side walls
         if (side == 1) {
             r *= 0.7;
             g *= 0.7;
             b *= 0.7;
         }
 
+        double brightness = 1.0 / (perpWallDist * perpWallDist * 0.02 + 1.0);
+        if (brightness < 0.2) brightness = 0.2;
+
+        r = (Uint8)(r * brightness);
+        g = (Uint8)(g * brightness);
+        b = (Uint8)(b * brightness);
+
         Uint32 color = (255 << 24) | (r << 16) | (g << 8) | b;
 
-        // --- Draw vertical stripe ---
         for (int y = drawStart; y < drawEnd; y++) {
             pixels[y * SCREEN_WIDTH + x] = color;
         }
     }
 
-    // --- Minimap (top-left corner) ---
+    // --- Minimap ---
     int tileSize = 8;
 
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-
-            Uint32 color = (worldMap[x][y] == 1) ? 0xFFFFFFFF : 0xFF000000;
+    for (int y = 0; y < CELL_HEIGHT; y++) {
+        for (int x = 0; x < CELL_WIDTH; x++) {
+            Uint32 color;
+            switch (currentCell->map[y][x]) {
+                case 1: color = 0xFF00FF00; break;
+                case 2: color = 0xFFFF0000; break;
+                case 3: color = 0xFF0000FF; break;
+                default: color = 0xFF000000; break;
+            }
 
             for (int py = 0; py < tileSize; py++) {
                 for (int px = 0; px < tileSize; px++) {
-
                     int sx = x * tileSize + px;
                     int sy = y * tileSize + py;
-
-                    if (sx < SCREEN_WIDTH && sy < SCREEN_HEIGHT) {
+                    if (sx < SCREEN_WIDTH && sy < SCREEN_HEIGHT)
                         pixels[sy * SCREEN_WIDTH + sx] = color;
-                    }
                 }
             }
         }
@@ -252,10 +240,8 @@ void render(Uint32 *pixels) {
         for (int x = -2; x <= 2; x++) {
             int px = playerX + x;
             int py = playerY + y;
-
-            if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT) {
+            if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT)
                 pixels[py * SCREEN_WIDTH + px] = 0xFFFF0000;
-            }
         }
     }
 
@@ -263,18 +249,16 @@ void render(Uint32 *pixels) {
     for (int i = 0; i < 10; i++) {
         int dx = (int)((posX + dirX * i * 0.2) * tileSize);
         int dy = (int)((posY + dirY * i * 0.2) * tileSize);
-
-        if (dx >= 0 && dx < SCREEN_WIDTH && dy >= 0 && dy < SCREEN_HEIGHT) {
+        if (dx >= 0 && dx < SCREEN_WIDTH && dy >= 0 && dy < SCREEN_HEIGHT)
             pixels[dy * SCREEN_WIDTH + dx] = 0xFF00FFFF;
-        }
     }
 }
 
 int main() {
     App app;
-    if (!init(&app)) {
-        return 1;
-    }
+    if (!init(&app)) return 1;
+
+    init_world();
 
     Uint32 pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
 
