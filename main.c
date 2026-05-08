@@ -247,6 +247,20 @@ void render(Uint32 *pixels) {
                         double dSegLen = sqrt(dSegX*dSegX + dSegY*dSegY);
                         double dtx = (dSegLen > 1e-9) ? dSegX/dSegLen : 1.0;
                         double dty = (dSegLen > 1e-9) ? dSegY/dSegLen : 0.0;
+
+                        // Check if source and destination tangents agree after rotation
+                        // If the rotated source tangent opposes dst tangent, flip the offset
+                        double c = cos(p->rotationAngle), s = sin(p->rotationAngle);
+                        double srcSegX = p->x1 - p->x0;
+                        double srcSegY = p->y1 - p->y0;
+                        double srcLen  = sqrt(srcSegX*srcSegX + srcSegY*srcSegY);
+                        double stx = (srcLen > 1e-9) ? srcSegX/srcLen : 1.0;
+                        double sty = (srcLen > 1e-9) ? srcSegY/srcLen : 0.0;
+                        double rotStx = stx * c - sty * s;
+                        double rotSty = stx * s + sty * c;
+                        double dot = rotStx * dtx + rotSty * dty;
+                        if (dot < 0) localOffset = -localOffset;  // flip if tangents oppose
+
                         rayPosX = p->dstMidX + dtx * localOffset;
                         rayPosY = p->dstMidY + dty * localOffset;
                     } else {
@@ -254,6 +268,9 @@ void render(Uint32 *pixels) {
                         rayPosX = p->dstMidX;
                         rayPosY = p->dstMidY;
                     }
+                    double nudge = 1e-3;
+                    rayPosX += rayDirX * nudge;
+                    rayPosY += rayDirY * nudge;
 
                     rayCell = p->destination;
                     portalJumps++;
