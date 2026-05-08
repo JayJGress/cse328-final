@@ -5,11 +5,12 @@
 Cell cells[MAX_CELLS];
 Cell *currentCell;
 
-double angle(double angle) {
+double rangle(double angle) {
     return angle * M_PI / 180;
 }
 
-void portal_init(Portal *p, Cell *cell, double cx, double cy, double facingAngle) {
+void portal_init(Portal *p, Cell *cell, double cx, double cy, double angle) {
+    double facingAngle = rangle(angle);
     double segAngle = facingAngle + M_PI / 2.0;
     double half = 0.5;
     double ex = cos(segAngle);
@@ -68,7 +69,7 @@ void init_world() {
     memcpy(cells[0].map, map0, sizeof(map0));
     cells[0].portalCount = 1;
     Portal *p0 = &cells[0].portals[0];
-    portal_init(p0, &cells[0], 9.99, 4.0, 0.0);
+    portal_init(p0, &cells[0], 9.99, 4.0, 0);
 
     int map1[CELL_HEIGHT][CELL_WIDTH] = {
         {1,1,1,1,1,1,1,1,1,1,1},
@@ -83,7 +84,7 @@ void init_world() {
     memcpy(cells[1].map, map1, sizeof(map1));
     cells[1].portalCount = 1;
     Portal *p1 = &cells[1].portals[0];
-    portal_init(p1, &cells[1], 2.5, 3.5, angle(125));
+    portal_init(p1, &cells[1], 0.0, 3.5, 180);
 
     portal_link(p0, p1);
     currentCell = &cells[0];
