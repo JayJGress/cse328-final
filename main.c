@@ -202,9 +202,26 @@ void render(Uint32 *pixels) {
                 if (nearestPortalIdx >= 0 && nearestPortalT < currentT) {
                     totalDist += nearestPortalT;
                     Portal *p = &rayCell->portals[nearestPortalIdx];
-                    rayPosX = rayPosX + rayDirX * nearestPortalT + p->offsetX;
-                    rayPosY = rayPosY + rayDirY * nearestPortalT + p->offsetY;
 
+                    // Compute hit point relative to portal's midpoint
+                    double hitX = rayPosX + rayDirX * nearestPortalT;
+                    double hitY = rayPosY + rayDirY * nearestPortalT;
+                    double srcMidX = (p->x0 + p->x1) / 2.0;
+                    double srcMidY = (p->y0 + p->y1) / 2.0;
+
+                    // Local offset along the portal segment at the hit point
+                    double localOffset = 0.0;
+                    {
+                        double segX = p->x1 - p->x0;
+                        double segY = p->y1 - p->y0;
+                        double segLen = sqrt(segX*segX + segY*segY);
+                        if (segLen > 1e-9) {
+                            double tx = segX / segLen, ty = segY / segLen;
+                            localOffset = (hitX - srcMidX) * tx + (hitY - srcMidY) * ty;
+                        }
+                    }
+
+                    // Rotate the ray direction
                     if (fabs(p->rotationAngle) > 1e-9) {
                         double c = cos(p->rotationAngle);
                         double s = sin(p->rotationAngle);
@@ -212,6 +229,30 @@ void render(Uint32 *pixels) {
                         double newDirY = rayDirX * s + rayDirY * c;
                         rayDirX = newDirX;
                         rayDirY = newDirY;
+                    }
+
+                    // Place ray at equivalent position on destination portal
+                    // using the rotated segment direction of the destination portal
+                    Portal *dst = NULL;
+                    for (int j = 0; j < p->destination->portalCount; j++) {
+                        if (p->destination->portals[j].destination == rayCell) {
+                            dst = &p->destination->portals[j];
+                            break;
+                        }
+                    }
+
+                    if (dst) {
+                        double dSegX = dst->x1 - dst->x0;
+                        double dSegY = dst->y1 - dst->y0;
+                        double dSegLen = sqrt(dSegX*dSegX + dSegY*dSegY);
+                        double dtx = (dSegLen > 1e-9) ? dSegX/dSegLen : 1.0;
+                        double dty = (dSegLen > 1e-9) ? dSegY/dSegLen : 0.0;
+                        rayPosX = p->dstMidX + dtx * localOffset;
+                        rayPosY = p->dstMidY + dty * localOffset;
+                    } else {
+                        // Fallback: just teleport to destination midpoint
+                        rayPosX = p->dstMidX;
+                        rayPosY = p->dstMidY;
                     }
 
                     rayCell = p->destination;

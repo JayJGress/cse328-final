@@ -24,8 +24,8 @@ void portal_init(Portal *p, Cell *cell, double cx, double cy, double facingAngle
     p->facingAngle   = facingAngle;
     p->rotationAngle = 0.0;
     p->cell        = cell;
-    p->offsetX     = 0.0;
-    p->offsetY     = 0.0;
+    p->dstMidX     = 0.0;
+    p->dstMidY     = 0.0;
     p->destination = NULL;
 }
 
@@ -38,13 +38,14 @@ void portal_link(Portal *a, Portal *b) {
     double bMidX = (b->x0 + b->x1) / 2.0;
     double bMidY = (b->y0 + b->y1) / 2.0;
 
-    a->offsetX = bMidX - aMidX;
-    a->offsetY = bMidY - aMidY;
-    b->offsetX = aMidX - bMidX;
-    b->offsetY = aMidY - bMidY;
+    // Each portal stores its partner's midpoint as the exit anchor
+    a->dstMidX = bMidX;
+    a->dstMidY = bMidY;
+    b->dstMidX = aMidX;
+    b->dstMidY = aMidY;
 
-    // Ray rotation delta: when crossing a into b, the ray turns by the
-    // difference in facing angles + 180 (exit out the back of b)
+    // Rotation: re-orient ray from A's facing into B's facing
+    // +PI because the ray exits out B's front, which is opposite to B's inward normal
     a->rotationAngle = b->facingAngle - a->facingAngle + M_PI;
     b->rotationAngle = a->facingAngle - b->facingAngle + M_PI;
 }

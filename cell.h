@@ -10,9 +10,9 @@ typedef struct Cell Cell;
 typedef struct {
     double x0, y0;
     double x1, y1;
-    double offsetX, offsetY;
-    double facingAngle;    // portal's orientation in world space
-    double rotationAngle;  // angle to rotate ray on crossing
+    double dstMidX, dstMidY;  // replace offsetX/offsetY
+    double facingAngle;
+    double rotationAngle;
     Cell *cell;
     Cell *destination;
 } Portal;
