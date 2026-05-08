@@ -101,6 +101,20 @@ void handle_input(bool *running) {
     if (keystate[SDL_SCANCODE_A]) rotate(-rotSpeed);
 }
 
+double ray_segment_intersect(double rox, double roy, double rdx, double rdy, double x0, double y0, double x1, double y1) {
+    double dx = x1 - x0;
+    double dy = y1 - y0;
+
+    double denom = rdx * dy - rdy * dx;
+    if (fabs(denom) < 1e-10) return -1.0;
+    
+    double t = ((x0 - rox) * dy - (y0 - roy) * dx) / denom;
+    double u = ((x0 - rox) * rdy - (y0 - roy) * rdx) / denom;
+
+    if (t > 1e-4 && u >= 0.0 && u <= 1.0) return t;
+    return -1.0;
+}
+
 void render(Uint32 *pixels) {
     // --- Clear screen (ceiling + floor) ---
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
@@ -116,87 +130,108 @@ void render(Uint32 *pixels) {
         double cameraX = 2 * x / (double)SCREEN_WIDTH - 1;
         double rayDirX = dirX + planeX * cameraX;
         double rayDirY = dirY + planeY * cameraX;
-
-        int mapX = (int)posX;
-        int mapY = (int)posY;
-
-        double deltaDistX = (rayDirX == 0) ? 1e30 : fabs(1 / rayDirX);
-        double deltaDistY = (rayDirY == 0) ? 1e30 : fabs(1 / rayDirY);
-
-        double sideDistX, sideDistY;
-        int stepX, stepY;
-
-        if (rayDirX < 0) {
-            stepX = -1;
-            sideDistX = (posX - mapX) * deltaDistX;
-        } else {
-            stepX = 1;
-            sideDistX = (mapX + 1.0 - posX) * deltaDistX;
-        }
-
-        if (rayDirY < 0) {
-            stepY = -1;
-            sideDistY = (posY - mapY) * deltaDistY;
-        } else {
-            stepY = 1;
-            sideDistY = (mapY + 1.0 - posY) * deltaDistY;
-        }
-
-        // --- DDA ---
+        
+        double rayPosX = posX;
+        double rayPosY = posY;
+        Cell *rayCell = currentCell;
         int hit = 0;
         int oob = 0;
         int side;
-        Cell *rayCell = currentCell;
-        double rayPosX = posX;
-        double rayPosY = posY;
+        int mapX, mapY;
 
-        while (!hit) {
-            if (sideDistX < sideDistY) {
-                sideDistX += deltaDistX;
-                mapX += stepX;
-                side = 0;
+        int maxPortalJumps = 8;
+        int portalJumps = 0;
+        
+        int stepX = 0, stepY = 0;
+        double totalDist = 0.0;
+
+        while (!hit && portalJumps <= maxPortalJumps) {
+            mapX = (int)rayPosX;
+            mapY = (int)rayPosY;
+
+            double deltaDistX = (rayDirX == 0) ? 1e30 : fabs(1.0/rayDirX);
+            double deltaDistY = (rayDirY == 0) ? 1e30 : fabs(1.0/rayDirY);
+
+            double sideDistX, sideDistY; 
+
+            if (rayDirX < 0) {
+                stepX = -1;
+                sideDistX = (rayPosX - mapX) * deltaDistX;
             } else {
-                sideDistY += deltaDistY;
-                mapY += stepY;
-                side = 1;
+                stepX = 1;
+                sideDistX = (mapX + 1.0 - rayPosX) * deltaDistX;
             }
 
-            if (mapX < 0 || mapY < 0 || mapX >= CELL_WIDTH || mapY >= CELL_HEIGHT) {
-                hit = 1;
-                oob = 1;
-                break;
+            if (rayDirY < 0) {
+                stepY = -1;
+                sideDistY = (rayPosY - mapY) * deltaDistY;
+            } else {
+                stepY = 1;
+                sideDistY = (mapY + 1.0 - rayPosY) * deltaDistY;
             }
 
-            int tile = rayCell->map[mapY][mapX];
+            double nearestPortalT = 1e30;
+            int nearestPortalIdx = -1;
 
-            // check portals
-            int portal_hit = 0;
             for (int i = 0; i < rayCell->portalCount; i++) {
                 Portal *p = &rayCell->portals[i];
-                if (p->axis == 0) {
-                    if (mapX == (int)p->x && mapY >= (int)p->y && mapY < (int)(p->y + p->width)) {
-                        rayPosX += p->offsetX;
-                        rayPosY += p->offsetY;
-                        mapX = (int)(mapX + p->offsetX);
-                        mapY = (int)(mapY + p->offsetY);
-                        rayCell = p->destination;
-                        portal_hit = 1;
-                        break;
-                    }
-                } else {
-                    if (mapY == (int)p->y && mapX >= (int)p->x && mapX < (int)(p->x + p->width)) {
-                        rayPosX += p->offsetX;
-                        rayPosY += p->offsetY;
-                        mapX = (int)(mapX + p->offsetX);
-                        mapY = (int)(mapY + p->offsetY);
-                        rayCell = p->destination;
-                        portal_hit = 1;
-                        break;
-                    }
+                double t = ray_segment_intersect(rayPosX, rayPosY, rayDirX, rayDirY, p->x0, p->y0, p->x1, p->y1);
+                if (t > 0 && t < nearestPortalT) {
+                    nearestPortalT = t;
+                    nearestPortalIdx = i;
                 }
             }
 
-            if (!portal_hit && tile != 0) hit = 1;
+            int portalCrossedThisSegment = 0;
+
+            while (!hit) {
+                if (sideDistX < sideDistY) {
+                    sideDistX += deltaDistX;
+                    mapX += stepX; 
+                    side = 0;
+                } else {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+
+                double currentT = (side == 0) 
+                    ? (mapX - rayPosX + (1 - stepX) / 2.0) / rayDirX 
+                    : (mapY - rayPosY + (1 - stepY) / 2.0) / rayDirY;
+
+                if (nearestPortalIdx >= 0 && nearestPortalT < currentT) {
+                    totalDist += nearestPortalT;
+                    Portal *p = &rayCell->portals[nearestPortalIdx];
+                    rayPosX = rayPosX + rayDirX * nearestPortalT + p->offsetX;
+                    rayPosY = rayPosY + rayDirY * nearestPortalT + p->offsetY;
+
+                    if (fabs(p->angle) > 1e-9) {
+                        double c = cos(p->angle);
+                        double s = sin(p->angle);
+                        double newDirX = rayDirX * c - rayDirY * s;
+                        double newDirY = rayDirX * s + rayDirY * c;
+                        rayDirX = newDirX;
+                        rayDirY = newDirY;
+                    }
+
+                    rayCell = p->destination;
+                    portalJumps++;
+                    portalCrossedThisSegment = 1;
+                    break;
+                }
+
+                if (mapX < 0 || mapY < 0 || mapX >= CELL_WIDTH || mapY >= CELL_HEIGHT) {
+                    hit = 1;
+                    oob = 1;
+                    break;
+                }
+
+                if (rayCell->map[mapY][mapX] != 0) {
+                    hit = 1;
+                }
+            }
+
+            if (!portalCrossedThisSegment) break;
         }
 
         if (oob) {
@@ -209,9 +244,9 @@ void render(Uint32 *pixels) {
         // --- Distance ---
         double perpWallDist;
         if (side == 0)
-            perpWallDist = (mapX - rayPosX + (1 - stepX) / 2.0) / rayDirX;
+            perpWallDist = totalDist + (mapX - rayPosX + (1 - stepX) / 2.0) / rayDirX;
         else
-            perpWallDist = (mapY - rayPosY + (1 - stepY) / 2.0) / rayDirY;
+            perpWallDist = totalDist + (mapY - rayPosY + (1 - stepY) / 2.0) / rayDirY;
         if (perpWallDist < 0.0001) perpWallDist = 0.0001;
 
         // --- Line height ---
@@ -276,6 +311,24 @@ void render(Uint32 *pixels) {
                         pixels[sy * SCREEN_WIDTH + sx] = color;
                 }
             }
+        }
+    }
+
+    // --- Portals on minimap ---
+    for (int i = 0; i < currentCell->portalCount; i++) {
+        Portal *p = &currentCell->portals[i];
+
+        double dx = p->x1 - p->x0;
+        double dy = p->y1 - p->y0;
+        double len = (dx * dx + dy * dy);
+        int steps = (int)(len * tileSize * 4);
+
+        for (int s = 0; s <= steps; s++) {
+            double t = (double)s / steps;
+            int px = (int)((p->x0 + dx * t) * tileSize);
+            int py = (int)((p->y0 + dy * t) * tileSize);
+            if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT)
+                pixels[py * SCREEN_WIDTH + px] = 0xFFFF00FF;
         }
     }
 

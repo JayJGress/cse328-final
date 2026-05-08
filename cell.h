@@ -9,11 +9,11 @@
 typedef struct Cell Cell;
  
 typedef struct {
-    int x, y;
-    double width;
-    int axis;
+    double x0, y0;
+    double x1, y1;
     double offsetX, offsetY;
     double angle;
+    Cell *cell;
     Cell *destination;
 } Portal;
  
