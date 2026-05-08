@@ -1,23 +1,31 @@
 #include "cell.h"
 #include <string.h>
 #include <math.h>
- 
+
 Cell cells[MAX_CELLS];
 Cell *currentCell;
- 
-void portal_init(Portal *p, Cell *cell, double cx, double cy, double angle) {
-    double segAngle = angle + M_PI / 2.0;
+
+void portal_init(Portal *p, Cell *cell, double cx, double cy, double facingAngle) {
+    double segAngle = facingAngle + M_PI / 2.0;
     double half = 0.5;
+    double ex = cos(segAngle);
+    double ey = sin(segAngle);
 
-    p->x0 = cx - cos(segAngle) * half;
-    p->y0 = cy - sin(segAngle) * half;
-    p->x1 = cx + cos(segAngle) * half;
-    p->y1 = cy + sin(segAngle) * half;
+    // Normalize winding so segment always goes in consistent direction
+    if (ex < 0 || (fabs(ex) < 1e-9 && ey < 0)) {
+        ex = -ex;
+        ey = -ey;
+    }
 
-    p->angle = angle;
-    p->cell = cell;
-    p->offsetX = 0.0;
-    p->offsetY = 0.0;
+    p->x0 = cx - ex * half;
+    p->y0 = cy - ey * half;
+    p->x1 = cx + ex * half;
+    p->y1 = cy + ey * half;
+    p->facingAngle   = facingAngle;
+    p->rotationAngle = 0.0;
+    p->cell        = cell;
+    p->offsetX     = 0.0;
+    p->offsetY     = 0.0;
     p->destination = NULL;
 }
 
@@ -29,11 +37,16 @@ void portal_link(Portal *a, Portal *b) {
     double aMidY = (a->y0 + a->y1) / 2.0;
     double bMidX = (b->x0 + b->x1) / 2.0;
     double bMidY = (b->y0 + b->y1) / 2.0;
-    
+
     a->offsetX = bMidX - aMidX;
     a->offsetY = bMidY - aMidY;
     b->offsetX = aMidX - bMidX;
     b->offsetY = aMidY - bMidY;
+
+    // Ray rotation delta: when crossing a into b, the ray turns by the
+    // difference in facing angles + 180 (exit out the back of b)
+    a->rotationAngle = b->facingAngle - a->facingAngle + M_PI;
+    b->rotationAngle = a->facingAngle - b->facingAngle + M_PI;
 }
 
 void init_world() {
@@ -50,7 +63,7 @@ void init_world() {
     memcpy(cells[0].map, map0, sizeof(map0));
     cells[0].portalCount = 1;
     Portal *p0 = &cells[0].portals[0];
-    portal_init(p0, &cells[0], 9.99, 5.0, 0.0);
+    portal_init(p0, &cells[0], 9.99, 4.0, 0.0);
 
     int map1[CELL_HEIGHT][CELL_WIDTH] = {
         {1,1,1,1,1,1,1,1,1,1,1},
@@ -65,7 +78,7 @@ void init_world() {
     memcpy(cells[1].map, map1, sizeof(map1));
     cells[1].portalCount = 1;
     Portal *p1 = &cells[1].portals[0];
-    portal_init(p1, &cells[1], 2.0, 3.5, M_PI / 2.0);
+    portal_init(p1, &cells[1], 0.0, 3.5, M_PI);
 
     portal_link(p0, p1);
     currentCell = &cells[0];

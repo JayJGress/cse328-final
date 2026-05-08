@@ -205,9 +205,9 @@ void render(Uint32 *pixels) {
                     rayPosX = rayPosX + rayDirX * nearestPortalT + p->offsetX;
                     rayPosY = rayPosY + rayDirY * nearestPortalT + p->offsetY;
 
-                    if (fabs(p->angle) > 1e-9) {
-                        double c = cos(p->angle);
-                        double s = sin(p->angle);
+                    if (fabs(p->rotationAngle) > 1e-9) {
+                        double c = cos(p->rotationAngle);
+                        double s = sin(p->rotationAngle);
                         double newDirX = rayDirX * c - rayDirY * s;
                         double newDirY = rayDirX * s + rayDirY * c;
                         rayDirX = newDirX;
