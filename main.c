@@ -6,6 +6,7 @@
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
+#define PORTAL_FRAME_ENABLED 1
 
 double posX = 7.5, posY = 5.5;
 double dirX = 0, dirY = -1;
@@ -176,6 +177,12 @@ void render(Uint32 *pixels) {
         }
     }
 
+    int columnPortal[SCREEN_WIDTH][16];
+    double columnPortalDist[SCREEN_WIDTH][16];
+    int columnPortalCount[SCREEN_WIDTH];
+    memset(columnPortal, -1, sizeof(columnPortal));
+    memset(columnPortalCount, 0, sizeof(columnPortalCount));
+
     // --- Raycasting ---
     for (int x = 0; x < SCREEN_WIDTH; x++) {
 
@@ -285,13 +292,7 @@ void render(Uint32 *pixels) {
 
                     // Place ray at equivalent position on destination portal
                     // using the rotated segment direction of the destination portal
-                    Portal *dst = NULL;
-                    for (int j = 0; j < p->destination->portalCount; j++) {
-                        if (p->destination->portals[j].destination == rayCell) {
-                            dst = &p->destination->portals[j];
-                            break;
-                        }
-                    }
+                    Portal *dst = p->partner;
 
                     if (dst) {
                         double dSegX = dst->x1 - dst->x0;
@@ -299,19 +300,6 @@ void render(Uint32 *pixels) {
                         double dSegLen = sqrt(dSegX*dSegX + dSegY*dSegY);
                         double dtx = (dSegLen > 1e-9) ? dSegX/dSegLen : 1.0;
                         double dty = (dSegLen > 1e-9) ? dSegY/dSegLen : 0.0;
-
-                        // Check if source and destination tangents agree after rotation
-                        // If the rotated source tangent opposes dst tangent, flip the offset
-                        double c = cos(p->rotationAngle), s = sin(p->rotationAngle);
-                        double srcSegX = p->x1 - p->x0;
-                        double srcSegY = p->y1 - p->y0;
-                        double srcLen  = sqrt(srcSegX*srcSegX + srcSegY*srcSegY);
-                        double stx = (srcLen > 1e-9) ? srcSegX/srcLen : 1.0;
-                        double sty = (srcLen > 1e-9) ? srcSegY/srcLen : 0.0;
-                        double rotStx = stx * c - sty * s;
-                        double rotSty = stx * s + sty * c;
-                        double dot = rotStx * dtx + rotSty * dty;
-                        if (dot < 0) localOffset = -localOffset;  // flip if tangents oppose
 
                         rayPosX = p->dstMidX + dtx * localOffset;
                         rayPosY = p->dstMidY + dty * localOffset;
@@ -327,6 +315,12 @@ void render(Uint32 *pixels) {
                     rayCell = p->destination;
                     portalJumps++;
                     portalCrossedThisSegment = 1;
+                    int depth = columnPortalCount[x];
+                    if (depth < 16) {
+                        columnPortal[x][depth] = nearestPortalIdx;
+                        columnPortalDist[x][depth] = totalDist;
+                        columnPortalCount[x]++;
+                    }
                     break;
                 }
 
@@ -401,6 +395,37 @@ void render(Uint32 *pixels) {
             pixels[y * SCREEN_WIDTH + x] = color;
         }
     }
+
+    #if PORTAL_FRAME_ENABLED
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            for (int d = 0; d < columnPortalCount[x]; d++) {
+                int leftEdge  = (x > 0 && columnPortal[x-1][d] != columnPortal[x][d]);
+                int rightEdge = (x < SCREEN_WIDTH-1 && columnPortal[x+1][d] != columnPortal[x][d]);
+                
+                double portalDist = columnPortalDist[x][d];
+                if (portalDist < 0.0001) portalDist = 0.0001;
+                int frameHeight = (int)(SCREEN_HEIGHT / portalDist);
+                int frameStart = SCREEN_HEIGHT / 2 - frameHeight / 2;
+                int frameEnd   = SCREEN_HEIGHT / 2 + frameHeight / 2;
+                if (frameStart < 0) frameStart = 0;
+                if (frameEnd >= SCREEN_HEIGHT) frameEnd = SCREEN_HEIGHT - 1;
+
+                if (leftEdge || rightEdge) {
+                    int unclampedStart = SCREEN_HEIGHT / 2 - frameHeight / 2;
+                    int unclampedEnd   = SCREEN_HEIGHT / 2 + frameHeight / 2;
+                    for (int y = frameStart; y <= frameEnd; y++) {
+                        if (y >= unclampedStart && y <= unclampedEnd)
+                            pixels[y * SCREEN_WIDTH + x] = 0xFFFF00FF;
+                    }
+                }
+
+                if (frameStart > 0)
+                    pixels[frameStart * SCREEN_WIDTH + x] = 0xFFFF00FF;
+                if (frameEnd < SCREEN_HEIGHT - 1)
+                    pixels[frameEnd * SCREEN_WIDTH + x] = 0xFFFF00FF;
+            }
+        }
+    #endif
 
     // --- Minimap ---
     int tileSize = 8;

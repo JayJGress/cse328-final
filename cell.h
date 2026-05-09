@@ -6,8 +6,9 @@
 #define CELL_HEIGHT 8
 
 typedef struct Cell Cell;
+typedef struct Portal Portal;
 
-typedef struct {
+struct Portal {
     double x0, y0;
     double x1, y1;
     double dstMidX, dstMidY;  // replace offsetX/offsetY
@@ -15,7 +16,8 @@ typedef struct {
     double rotationAngle;
     Cell *cell;
     Cell *destination;
-} Portal;
+    Portal *partner;
+};
 
 struct Cell {
     int map[CELL_HEIGHT][CELL_WIDTH];
