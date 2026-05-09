@@ -26,6 +26,9 @@ struct Cell {
 extern Cell cells[MAX_CELLS];
 extern Cell *currentCell;
 
+int crosses_portal(Portal *p,
+                   double ox, double oy, double nx, double ny,
+                   double *out_x, double *out_y, double *out_angle);
 void init_world();
 
 #endif

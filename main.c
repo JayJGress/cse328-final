@@ -67,34 +67,72 @@ void rotate(double angle) {
     planeY = oldPlaneX * sin(angle) + planeY * cos(angle);
 }
 
-void handle_input(bool *running) {
+void handle_input(bool *running, double dt) {
     SDL_Event event;
-
     const Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_QUIT) {
-            *running = false;
-        }
-    }
+    while (SDL_PollEvent(&event))
+        if (event.type == SDL_QUIT) *running = false;
 
-    double moveSpeed = 0.005;
-    double rotSpeed = 0.003;
-    double margin = 0.2;
+    double moveSpeed = 3.0*dt;
+    double rotSpeed  = 2.0*dt;
+    double margin    = 0.2;
+
+    double newX = posX, newY = posY;
 
     if (keystate[SDL_SCANCODE_W]) {
-        double newX = posX + dirX * moveSpeed;
-        double newY = posY + dirY * moveSpeed;
-
-        if (!is_wall(newX + dirX * margin, posY)) posX = newX;
-        if (!is_wall(posX, newY + dirY * margin)) posY = newY;
+        newX = posX + dirX * moveSpeed;
+        newY = posY + dirY * moveSpeed;
     }
     if (keystate[SDL_SCANCODE_S]) {
-        double newX = posX - dirX * moveSpeed;
-        double newY = posY - dirY * moveSpeed;
+        newX = posX - dirX * moveSpeed;
+        newY = posY - dirY * moveSpeed;
+    }
 
-        if (!is_wall(newX - dirX * margin, posY)) posX = newX;
-        if (!is_wall(posX, newY - dirY * margin)) posY = newY;
+    if (newX != posX || newY != posY) {
+        // Check portals BEFORE wall collision
+        int teleported = 0;
+        for (int i = 0; i < currentCell->portalCount; i++) {
+            double ex, ey, angle;
+            if (crosses_portal(&currentCell->portals[i],
+                posX, posY, newX, newY,
+                &ex, &ey, &angle)) {
+
+                double origDirX = dirX, origDirY = dirY;
+                double origPlaneX = planeX, origPlaneY = planeY;
+                Cell *origCell = currentCell;
+
+                double c = cos(angle), s = sin(angle);
+                dirX   = origDirX*c   - origDirY*s;
+                dirY   = origDirX*s   + origDirY*c;
+                planeX = origPlaneX*c - origPlaneY*s;
+                planeY = origPlaneX*s + origPlaneY*c;
+
+                // Switch cell BEFORE the wall check so is_wall reads the right map
+                currentCell = currentCell->portals[i].destination;
+
+                double landX = ex + dirX * 0.15;
+                double landY = ey + dirY * 0.15;
+
+                if (!is_wall(landX, landY)) {
+                    posX = landX;
+                    posY = landY;
+                } else {
+                    // Restore everything including cell
+                    dirX = origDirX; dirY = origDirY;
+                    planeX = origPlaneX; planeY = origPlaneY;
+                    currentCell = origCell;
+                }
+                teleported = 1;
+                break;
+            }
+        }
+
+        if (!teleported) {
+            // Normal wall-collision response
+            if (!is_wall(newX + dirX * margin, posY)) posX = newX;
+            if (!is_wall(posX, newY + dirY * margin)) posY = newY;
+        }
     }
 
     if (keystate[SDL_SCANCODE_D]) rotate(rotSpeed);
@@ -268,7 +306,7 @@ void render(Uint32 *pixels) {
                         rayPosX = p->dstMidX;
                         rayPosY = p->dstMidY;
                     }
-                    double nudge = 1e-3;
+                    double nudge = 1e-6;
                     rayPosX += rayDirX * nudge;
                     rayPosY += rayDirY * nudge;
 
@@ -419,9 +457,15 @@ int main() {
     init_world();
 
     Uint32 pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
+    Uint32 lastTime = SDL_GetTicks();
 
     while (app.running) {
-        handle_input(&app.running);
+        Uint32 now = SDL_GetTicks();
+        double dt = (now - lastTime) / 1000.0;
+        lastTime = now;
+        if (dt > 0.05) dt = 0.05;
+
+        handle_input(&app.running, dt);
         render(pixels);
 
         SDL_UpdateTexture(app.texture, NULL, pixels, SCREEN_WIDTH * sizeof(Uint32));

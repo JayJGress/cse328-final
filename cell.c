@@ -55,6 +55,67 @@ void portal_link(Portal *a, Portal *b) {
     b->rotationAngle = a->facingAngle - b->facingAngle + M_PI;
 }
 
+int crosses_portal(Portal *p,
+                   double ox, double oy, double nx, double ny,
+                   double *out_x, double *out_y, double *out_angle)
+{
+    double mx = nx - ox, my = ny - oy;
+    double sx = p->x1 - p->x0, sy = p->y1 - p->y0;
+
+    double denom = mx * sy - my * sx;
+    if (fabs(denom) < 1e-10) return 0;
+
+    double t = ((p->x0 - ox) * sy - (p->y0 - oy) * sx) / denom;
+    double u = ((p->x0 - ox) * my - (p->y0 - oy) * mx) / denom;
+
+    if (t < 0.0 || t > 1.0 || u < 0.0 || u > 1.0) return 0;
+
+    double segLen = sqrt(sx*sx + sy*sy);
+    double nx_normal = sy / segLen;
+    double ny_normal = -sx / segLen;
+    if (mx * nx_normal + my * ny_normal >= 0) return 0;
+
+    // Only trigger when the player is close enough to the portal plane.
+    // Compute signed distance from old position to the portal's line.
+    double dx0 = ox - p->x0, dy0 = oy - p->y0;
+    double dist = dx0 * nx_normal + dy0 * ny_normal;
+    if (dist > 0.15) return 0;  // too far away, don't teleport yet
+
+    double tx = sx / segLen, ty = sy / segLen;
+    double hitX = p->x0 + sx * u;
+    double hitY = p->y0 + sy * u;
+    double midX = (p->x0 + p->x1) / 2.0;
+    double midY = (p->y0 + p->y1) / 2.0;
+    double localOffset = (hitX - midX) * tx + (hitY - midY) * ty;
+
+    Portal *dst = NULL;
+    for (int i = 0; i < p->destination->portalCount; i++) {
+        if (p->destination->portals[i].destination == p->cell) {
+            dst = &p->destination->portals[i];
+            break;
+        }
+    }
+
+    if (!dst) {
+        *out_x = p->dstMidX;
+        *out_y = p->dstMidY;
+    } else {
+        double dsx = dst->x1 - dst->x0, dsy = dst->y1 - dst->y0;
+        double dLen = sqrt(dsx*dsx + dsy*dsy);
+        double dtx = dsx/dLen, dty = dsy/dLen;
+
+        double c = cos(p->rotationAngle), s = sin(p->rotationAngle);
+        double rotTx = tx*c - ty*s, rotTy = tx*s + ty*c;
+        if (rotTx*dtx + rotTy*dty < 0) localOffset = -localOffset;
+
+        *out_x = p->dstMidX + dtx * localOffset;
+        *out_y = p->dstMidY + dty * localOffset;
+    }
+
+    *out_angle = p->rotationAngle;
+    return 1;
+}
+
 void init_world() {
     int map0[CELL_HEIGHT][CELL_WIDTH] = {
         {1,1,1,1,1,1,1,1,1,1,1},
@@ -69,7 +130,7 @@ void init_world() {
     memcpy(cells[0].map, map0, sizeof(map0));
     cells[0].portalCount = 1;
     Portal *p0 = &cells[0].portals[0];
-    portal_init(p0, &cells[0], 9.99, 4.0, 0);
+    portal_init(p0, &cells[0], 2, 4.5, 180);
 
     int map1[CELL_HEIGHT][CELL_WIDTH] = {
         {1,1,1,1,1,1,1,1,1,1,1},
@@ -84,7 +145,7 @@ void init_world() {
     memcpy(cells[1].map, map1, sizeof(map1));
     cells[1].portalCount = 1;
     Portal *p1 = &cells[1].portals[0];
-    portal_init(p1, &cells[1], 0.0, 3.5, 180);
+    portal_init(p1, &cells[1], 3, 3.5, 180);
 
     portal_link(p0, p1);
     currentCell = &cells[0];
