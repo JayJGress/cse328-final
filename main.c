@@ -12,6 +12,7 @@ double posX = 7.5, posY = 5.5;
 double dirX = 0, dirY = -1;
 double planeX = 0.66, planeY = 0;
 Cell *lastOrigCell = NULL;
+int selectedPortal = -1;
 
 typedef struct {
     SDL_Window* window;
@@ -77,6 +78,10 @@ void handle_input(bool *running, double dt) {
         if (event.type == SDL_QUIT) *running = false;
         if (event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_F)
             portalFramesEnabled = !portalFramesEnabled;
+        if (event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_TAB) {
+            if (currentCell->portalCount > 0)
+                selectedPortal = (selectedPortal + 1) % currentCell->portalCount;
+        }
     }
 
     double moveSpeed = 2.5*dt;
@@ -155,6 +160,71 @@ void handle_input(bool *running, double dt) {
 
     if (keystate[SDL_SCANCODE_D]) rotate(rotSpeed);
     if (keystate[SDL_SCANCODE_A]) rotate(-rotSpeed);
+
+    if (selectedPortal >= 0 && selectedPortal < currentCell->portalCount) {
+        Portal *p = &currentCell->portals[selectedPortal];
+        double moveStep = 2.0 * dt;
+
+        double pmx = 0, pmy = 0;
+        if (keystate[SDL_SCANCODE_UP])    pmy -= moveStep;
+        if (keystate[SDL_SCANCODE_DOWN])  pmy += moveStep;
+        if (keystate[SDL_SCANCODE_LEFT])  pmx -= moveStep;
+        if (keystate[SDL_SCANCODE_RIGHT]) pmx += moveStep;
+
+        if (keystate[SDL_SCANCODE_COMMA]) p->facingAngle -= 1.0 * dt;
+        if (keystate[SDL_SCANCODE_PERIOD]) p->facingAngle += 1.0 * dt;
+
+        if (keystate[SDL_SCANCODE_COMMA] || keystate[SDL_SCANCODE_PERIOD]) {
+            double midX = (p->x0 + p->x1) / 2.0;
+            double midY = (p->y0 + p->y1) / 2.0;
+            double segAngle = p->facingAngle + M_PI / 2.0;
+            double ex = cos(segAngle) * 0.5;
+            double ey = sin(segAngle) * 0.5;
+            p->x0 = midX - ex;
+            p->y0 = midY - ey;
+            p->x1 = midX + ex;
+            p->y1 = midY + ey;
+
+            // Recompute rotation angle for both directions
+            p->rotationAngle = p->partner->facingAngle - p->facingAngle + M_PI;
+            p->partner->rotationAngle = p->facingAngle - p->partner->facingAngle + M_PI;
+
+            // Re-check tangent alignment and flip partner endpoints if needed
+            double aSegX = p->x1 - p->x0, aSegY = p->y1 - p->y0;
+            double aLen  = sqrt(aSegX*aSegX + aSegY*aSegY);
+            double atx = aSegX/aLen, aty = aSegY/aLen;
+            double c = cos(p->rotationAngle), s = sin(p->rotationAngle);
+            double rotAtx = atx*c - aty*s;
+            double rotAty = atx*s + aty*c;
+            double bSegX = p->partner->x1 - p->partner->x0;
+            double bSegY = p->partner->y1 - p->partner->y0;
+            double bLen  = sqrt(bSegX*bSegX + bSegY*bSegY);
+            double btx = bSegX/bLen, bty = bSegY/bLen;
+            if (rotAtx*btx + rotAty*bty < 0) {
+                double tmp;
+                tmp = p->partner->x0; p->partner->x0 = p->partner->x1; p->partner->x1 = tmp;
+                tmp = p->partner->y0; p->partner->y0 = p->partner->y1; p->partner->y1 = tmp;
+            }
+        }
+
+        if (pmx != 0 || pmy != 0) {
+            double midX = (p->x0 + p->x1) / 2.0 + pmx;
+            double midY = (p->y0 + p->y1) / 2.0 + pmy;
+            double segAngle = p->facingAngle + M_PI / 2.0;
+            double ex = cos(segAngle) * 0.5;
+            double ey = sin(segAngle) * 0.5;
+            p->x0 = midX - ex;
+            p->y0 = midY - ey;
+            p->x1 = midX + ex;
+            p->y1 = midY + ey;
+
+            // Update midpoint anchors on both sides
+            p->dstMidX = (p->partner->x0 + p->partner->x1) / 2.0;  // unchanged, partner didn't move
+            p->dstMidY = (p->partner->y0 + p->partner->y1) / 2.0;
+            p->partner->dstMidX = midX;
+            p->partner->dstMidY = midY;
+        }
+    }
 }
 
 double ray_segment_intersect(double rox, double roy, double rdx, double rdy, double x0, double y0, double x1, double y1) {
@@ -471,7 +541,7 @@ void render(Uint32 *pixels) {
                 int px = (int)((p->x0 + dx * t) * tileSize);
                 int py = (int)((p->y0 + dy * t) * tileSize);
                 if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT)
-                    pixels[py * SCREEN_WIDTH + px] = 0xFFFF00FF;
+                    pixels[py * SCREEN_WIDTH + px] = (i == selectedPortal) ? 0xFF00FFFF : 0xFFFF00FF;
             }
         }
     }
