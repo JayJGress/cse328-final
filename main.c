@@ -6,8 +6,8 @@
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-#define PORTAL_FRAME_ENABLED 1
 
+int portalFramesEnabled = 0;
 double posX = 7.5, posY = 5.5;
 double dirX = 0, dirY = -1;
 double planeX = 0.66, planeY = 0;
@@ -73,8 +73,11 @@ void handle_input(bool *running, double dt) {
     SDL_Event event;
     const Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
-    while (SDL_PollEvent(&event))
+    while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) *running = false;
+        if (event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_F)
+            portalFramesEnabled = !portalFramesEnabled;
+    }
 
     double moveSpeed = 2.5*dt;
     double rotSpeed  = 1.5*dt;
@@ -396,7 +399,7 @@ void render(Uint32 *pixels) {
         }
     }
 
-    #if PORTAL_FRAME_ENABLED
+    if (portalFramesEnabled) {
         for (int x = 0; x < SCREEN_WIDTH; x++) {
             for (int d = 0; d < columnPortalCount[x]; d++) {
                 int leftEdge  = (x > 0 && columnPortal[x-1][d] != columnPortal[x][d]);
@@ -425,7 +428,7 @@ void render(Uint32 *pixels) {
                     pixels[frameEnd * SCREEN_WIDTH + x] = 0xFFFF00FF;
             }
         }
-    #endif
+    }
 
     // --- Minimap ---
     int tileSize = 8;
@@ -454,20 +457,22 @@ void render(Uint32 *pixels) {
     }
 
     // --- Portals on minimap ---
-    for (int i = 0; i < currentCell->portalCount; i++) {
-        Portal *p = &currentCell->portals[i];
+    if (portalFramesEnabled) {
+        for (int i = 0; i < currentCell->portalCount; i++) {
+            Portal *p = &currentCell->portals[i];
 
-        double dx = p->x1 - p->x0;
-        double dy = p->y1 - p->y0;
-        double len = (dx * dx + dy * dy);
-        int steps = (int)(len * tileSize * 4);
+            double dx = p->x1 - p->x0;
+            double dy = p->y1 - p->y0;
+            double len = (dx * dx + dy * dy);
+            int steps = (int)(len * tileSize * 4);
 
-        for (int s = 0; s <= steps; s++) {
-            double t = (double)s / steps;
-            int px = (int)((p->x0 + dx * t) * tileSize);
-            int py = (int)((p->y0 + dy * t) * tileSize);
-            if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT)
-                pixels[py * SCREEN_WIDTH + px] = 0xFFFF00FF;
+            for (int s = 0; s <= steps; s++) {
+                double t = (double)s / steps;
+                int px = (int)((p->x0 + dx * t) * tileSize);
+                int py = (int)((p->y0 + dy * t) * tileSize);
+                if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT)
+                    pixels[py * SCREEN_WIDTH + px] = 0xFFFF00FF;
+            }
         }
     }
 
