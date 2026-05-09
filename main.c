@@ -10,6 +10,7 @@
 double posX = 7.5, posY = 5.5;
 double dirX = 0, dirY = -1;
 double planeX = 0.66, planeY = 0;
+Cell *lastOrigCell = NULL;
 
 typedef struct {
     SDL_Window* window;
@@ -89,14 +90,18 @@ void handle_input(bool *running, double dt) {
         newY = posY - dirY * moveSpeed;
     }
 
+    Cell *justFromCell = lastOrigCell;
+    lastOrigCell = NULL;
+
     if (newX != posX || newY != posY) {
         int teleported = 0;
         for (int i = 0; i < currentCell->portalCount; i++) {
-            double ex, ey, angle;
-            if (crosses_portal(&currentCell->portals[i],
-                posX, posY, newX, newY,
-                &ex, &ey, &angle)) {
+            Portal *p = &currentCell->portals[i];
+            // skip any portal leading back to where we just came from
+            if (p->destination == justFromCell) continue;
 
+            double ex, ey, angle;
+            if (crosses_portal(p, posX, posY, newX, newY, &ex, &ey, &angle)) {
                 double origDirX = dirX, origDirY = dirY;
                 double origPlaneX = planeX, origPlaneY = planeY;
                 Cell *origCell = currentCell;
@@ -107,20 +112,20 @@ void handle_input(bool *running, double dt) {
                 planeX = origPlaneX*c - origPlaneY*s;
                 planeY = origPlaneX*s + origPlaneY*c;
 
-                currentCell = currentCell->portals[i].destination;
+                currentCell = p->destination;
 
                 if (!is_wall(ex, ey)) {
                     posX = ex;
                     posY = ey;
-                    double c2 = cos(angle), s2 = sin(angle);
-                    double rmx = (newX - posX)*c2 - (newY - posY)*s2;
-                    double rmy = (newX - posX)*s2 + (newY - posY)*c2;
+                    double rmx = (newX - posX)*cos(angle) - (newY - posY)*sin(angle);
+                    double rmy = (newX - posX)*sin(angle) + (newY - posY)*cos(angle);
                     double ml = sqrt(rmx*rmx + rmy*rmy);
                     if (ml > 1e-9) {
                         rmx /= ml; rmy /= ml;
                         if (is_wall(posX + rmx*margin, posY)) posX -= rmx*margin*0.5;
                         if (is_wall(posX, posY + rmy*margin)) posY -= rmy*margin*0.5;
                     }
+                    lastOrigCell = origCell;  // block return to source for one frame
                 } else {
                     dirX = origDirX; dirY = origDirY;
                     planeX = origPlaneX; planeY = origPlaneY;
@@ -141,99 +146,6 @@ void handle_input(bool *running, double dt) {
                 if (!is_wall(newX + mdx * margin, posY)) posX = newX;
                 if (!is_wall(posX, newY + mdy * margin)) posY = newY;
             }
-
-            // Drift check only when not teleporting this frame
-            for (int i = 0; i < currentCell->portalCount; i++) {
-                Portal *p = &currentCell->portals[i];
-                double sx = p->x1 - p->x0, sy = p->y1 - p->y0;
-                double segLen = sqrt(sx*sx + sy*sy);
-                double nx_normal = sy / segLen;
-                double ny_normal = -sx / segLen;
-
-                double dx0 = posX - p->x0, dy0 = posY - p->y0;
-                double dist = dx0 * nx_normal + dy0 * ny_normal;
-
-                double tx = sx / segLen, ty = sy / segLen;
-                double lateral = dx0 * tx + dy0 * ty;
-                double half = segLen / 2.0;
-
-                if (dist < 0.0 && dist > -0.05 && lateral >= -half && lateral <= half) {
-                    double ex, ey, angle;
-                    double dummy_nx = posX + nx_normal * 0.001;
-                    double dummy_ny = posY + ny_normal * 0.001;
-                    if (crosses_portal(p, dummy_nx, dummy_ny, posX, posY, &ex, &ey, &angle)) {
-                        double origDirX = dirX, origDirY = dirY;
-                        double origPlaneX = planeX, origPlaneY = planeY;
-                        Cell *origCell = currentCell;
-
-                        double c = cos(angle), s = sin(angle);
-                        dirX   = origDirX*c - origDirY*s;
-                        dirY   = origDirX*s + origDirY*c;
-                        planeX = origPlaneX*c - origPlaneY*s;
-                        planeY = origPlaneX*s + origPlaneY*c;
-
-                        currentCell = p->destination;
-
-                        if (!is_wall(ex, ey)) {
-                            posX = ex;
-                            posY = ey;
-                        } else {
-                            dirX = origDirX; dirY = origDirY;
-                            planeX = origPlaneX; planeY = origPlaneY;
-                            currentCell = origCell;
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    // After movement, check if player has drifted past any portal plane
-    for (int i = 0; i < currentCell->portalCount; i++) {
-        Portal *p = &currentCell->portals[i];
-        double sx = p->x1 - p->x0, sy = p->y1 - p->y0;
-        double segLen = sqrt(sx*sx + sy*sy);
-        double nx_normal = sy / segLen;
-        double ny_normal = -sx / segLen;
-
-        // Signed distance from player to portal plane
-        double dx0 = posX - p->x0, dy0 = posY - p->y0;
-        double dist = dx0 * nx_normal + dy0 * ny_normal;
-
-        // Check player is within the portal's lateral extent
-        double tx = sx / segLen, ty = sy / segLen;
-        double lateral = dx0 * tx + dy0 * ty;
-        double half = segLen / 2.0;
-
-        if (dist < 0.0 && lateral >= -half && lateral <= half) {
-            // Player is on the back side of the portal — teleport them
-            double ex, ey, angle;
-            double dummy_nx = posX + nx_normal * 0.001;
-            double dummy_ny = posY + ny_normal * 0.001;
-            if (crosses_portal(p, dummy_nx, dummy_ny, posX, posY, &ex, &ey, &angle)) {
-                double origDirX = dirX, origDirY = dirY;
-                double origPlaneX = planeX, origPlaneY = planeY;
-                Cell *origCell = currentCell;
-
-                double c = cos(angle), s = sin(angle);
-                dirX   = origDirX*c - origDirY*s;
-                dirY   = origDirX*s + origDirY*c;
-                planeX = origPlaneX*c - origPlaneY*s;
-                planeY = origPlaneX*s + origPlaneY*c;
-
-                currentCell = p->destination;
-
-                if (!is_wall(ex, ey)) {
-                    posX = ex;
-                    posY = ey;
-                } else {
-                    dirX = origDirX; dirY = origDirY;
-                    planeX = origPlaneX; planeY = origPlaneY;
-                    currentCell = origCell;
-                }
-            }
-            break;
         }
     }
 
@@ -279,7 +191,7 @@ void render(Uint32 *pixels) {
         int side;
         int mapX, mapY;
 
-        int maxPortalJumps = 8;
+        int maxPortalJumps = 16;
         int portalJumps = 0;
         
         int stepX = 0, stepY = 0;
@@ -430,6 +342,10 @@ void render(Uint32 *pixels) {
             }
 
             if (!portalCrossedThisSegment) break;
+        }
+
+        if (!hit && portalJumps > maxPortalJumps) {
+            oob = 1;
         }
 
         if (oob) {

@@ -71,9 +71,9 @@ int crosses_portal(Portal *p,
     if (t < 0.0 || t > 1.0 || u < 0.0 || u > 1.0) return 0;
 
     double segLen = sqrt(sx*sx + sy*sy);
-    double nx_normal = sy / segLen;
-    double ny_normal = -sx / segLen;
-    if (mx * nx_normal + my * ny_normal >= 0) return 0;
+    // double nx_normal = sy / segLen;
+    // double ny_normal = -sx / segLen;
+    // if (mx * nx_normal + my * ny_normal >= 0) return 0;
 
     double tx = sx / segLen, ty = sy / segLen;
     double hitX = p->x0 + sx * u;
@@ -122,9 +122,11 @@ void init_world() {
         {1,1,1,1,1,1,1,1,1,1,1}
     };
     memcpy(cells[0].map, map0, sizeof(map0));
-    cells[0].portalCount = 1;
+    cells[0].portalCount = 2;
     Portal *p0 = &cells[0].portals[0];
     portal_init(p0, &cells[0], 2, 4.5, 180);
+    Portal *p2 = &cells[0].portals[1];
+    portal_init(p2, &cells[0], 9.5, 4.5, 0);
 
     int map1[CELL_HEIGHT][CELL_WIDTH] = {
         {1,1,1,1,1,1,1,1,1,1,1},
@@ -137,10 +139,13 @@ void init_world() {
         {1,1,1,1,1,1,1,1,1,1,1}
     };
     memcpy(cells[1].map, map1, sizeof(map1));
-    cells[1].portalCount = 1;
+    cells[1].portalCount = 2;
     Portal *p1 = &cells[1].portals[0];
-    portal_init(p1, &cells[1], 5.5, 3.5, 45);
+    portal_init(p1, &cells[1], 3, 3.5, 180);
+    Portal *p3 = &cells[1].portals[1];
+    portal_init(p3, &cells[1], 8, 3.5, 0);
 
     portal_link(p0, p1);
+    portal_link(p2, p3);
     currentCell = &cells[0];
 }
