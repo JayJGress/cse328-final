@@ -75,12 +75,6 @@ int crosses_portal(Portal *p,
     double ny_normal = -sx / segLen;
     if (mx * nx_normal + my * ny_normal >= 0) return 0;
 
-    // Only trigger when the player is close enough to the portal plane.
-    // Compute signed distance from old position to the portal's line.
-    double dx0 = ox - p->x0, dy0 = oy - p->y0;
-    double dist = dx0 * nx_normal + dy0 * ny_normal;
-    if (dist > 0.15) return 0;  // too far away, don't teleport yet
-
     double tx = sx / segLen, ty = sy / segLen;
     double hitX = p->x0 + sx * u;
     double hitY = p->y0 + sy * u;
@@ -145,7 +139,7 @@ void init_world() {
     memcpy(cells[1].map, map1, sizeof(map1));
     cells[1].portalCount = 1;
     Portal *p1 = &cells[1].portals[0];
-    portal_init(p1, &cells[1], 3, 3.5, 180);
+    portal_init(p1, &cells[1], 5.5, 3.5, 45);
 
     portal_link(p0, p1);
     currentCell = &cells[0];
