@@ -177,5 +177,6 @@ CSE328-FINAL/
 │   └── render.c     # Raycasting, wall drawing, minimap, overlays
 ├── bin/             # Compiled binary (generated)
 ├── obj/             # Object files (generated)
+├── supplemental/    # Report and presentation files
 └── Makefile
 ```
