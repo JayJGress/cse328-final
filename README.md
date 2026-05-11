@@ -1,7 +1,7 @@
-# CSE328 — Portal Raycaster
+# CSE328: Portal Raycaster
 
 **Jay Gress**
-**115469091**
+[**115469091**]
 
 A 2.5D raycasting engine written in C using SDL2, inspired by classic renderers like Wolfenstein 3D. This project extends standard raycasting with a portal system that restructures physical space, allowing seamless traversal into non-adjacent environments.
 
