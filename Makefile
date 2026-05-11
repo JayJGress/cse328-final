@@ -1,15 +1,21 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -g
-LIBS = -lSDL2 -lm
- 
-TARGET = raycaster
-SRCS = main.c cell.c
- 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) $(SRCS) -o $(TARGET) $(LIBS)
- 
+CC      = gcc
+CFLAGS  = -Wall -Wextra -g -Iinclude
+LIBS    = -lSDL2 -lm
+TARGET  = bin/raycaster
+
+SRCS    = src/main.c src/cell.c src/player.c src/portal.c src/render.c
+OBJS    = $(patsubst src/%.c, obj/%.o, $(SRCS))
+
+$(TARGET): $(OBJS) | bin
+	$(CC) $(CFLAGS) $(OBJS) -o $(TARGET) $(LIBS)
+
+obj/%.o: src/%.c | obj
+	$(CC) $(CFLAGS) -c $< -o $@
+
+bin obj:
+	mkdir -p $@
+
 clean:
-	rm -f $(TARGET)
- 
+	rm -rf obj bin
+
 .PHONY: clean
- 
