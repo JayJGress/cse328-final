@@ -45,7 +45,7 @@ int main(void) {
     init_world();
 
     /* Initialise player in cell 0 at a clear spot, facing right */
-    player_init(7.5, 4.5, 1.0, 0.0, 0.0, 0.66, currentCell);
+    player_init(5.5, 3.5, 1.0, 0.0, 0.0, 0.66, currentCell);
 
     Uint32 pixels[SCREEN_WIDTH * SCREEN_HEIGHT];
     Uint32 lastTime = SDL_GetTicks();
